@@ -71,7 +71,7 @@ def fees_report(infile, outfile):
         writer.writeheader()
         writer.writerows(updated_list)
 
-if __name__ == '__main__':
+if _name_ == '__main__':
     try:
         from src.util import get_data_file_path
     except ImportError:
