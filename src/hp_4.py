@@ -1,77 +1,82 @@
 from datetime import datetime, timedelta
 from csv import DictReader, DictWriter
+from collections import defaultdict
+
 
 def reformat_dates(old_dates):
     """Accepts a list of date strings in format yyyy-mm-dd, re-formats each
     element to a format dd mmm yyyy--01 Jan 2001."""
-    modified_date_list = []
-    for dat in old_dates:
-        modified_date_list.append(datetime.strptime(dat, "%Y-%m-%d").strftime("%d %b %Y"))
-    return modified_date_list
+    formatted_dates = []
+    for date_str in old_dates:
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+        formatted_date = date_obj.strftime('%d %b %Y')
+        formatted_dates.append(formatted_date)
+    return formatted_dates
+
 
 def date_range(start, n):
-    """For input date string start, with format 'yyyy-mm-dd', returns
-    a list of of n datetime objects starting at start where each
+    """For input date string `start`, with format 'yyyy-mm-dd', returns
+    a list of of `n` datetime objects starting at `start` where each
     element in the list is one day after the previous."""
     if not isinstance(start, str):
-        raise TypeError("start must be a string")
-    elif not isinstance(n, int):
-        raise TypeError("n must be an integer")
-    else:
-        added_list = []
-        for inc in range(0, n):
-            added_list.append(datetime.strptime(start, "%Y-%m-%d") + timedelta(days=inc))
-        return added_list
+        raise TypeError("start should be a string")
+    if not isinstance(n, int):
+        raise TypeError("n should be an integer")
+    start_date = datetime.strptime(start, '%Y-%m-%d')
+    date_list = [start_date + timedelta(days=i) for i in range(n)]
+    return date_list
+
 
 def add_date_range(values, start_date):
-    """Adds a daily date range to the list values beginning with 
-    start_date.  The date, value pairs are returned as tuples
+    """Adds a daily date range to the list `values` beginning with
+    `start_date`.  The date, value pairs are returned as tuples
     in the returned list."""
-    added_list = []
-    for i, elem in enumerate(values):
-        dat_list = []       
-        dat_list.append(datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=i))
-        dat_list.append(elem)
-        added_list.append(tuple(dat_list))
-    return added_list
+    date_objects = date_range(start_date, len(values))
+    result = [(date, value) for date, value in zip(date_objects, values)]
+    return result
+
 
 def fees_report(infile, outfile):
     """Calculates late fees per patron id and writes a summary report to
     outfile."""
-    with open(infile) as file:
-        added_list = []
-        read_csv_obj = DictReader(file)
-        for record in read_csv_obj:
-            temp_dict = {}
-            late_fee_days = datetime.strptime(record['date_returned'], '%m/%d/%Y') - datetime.strptime(record['date_due'], '%m/%d/%Y') 
-            if late_fee_days.days > 0:
-                temp_dict["patron_id"] = record['patron_id']
-                temp_dict["late_fees"] = round(late_fee_days.days * 0.25, 2)
-                added_list.append(temp_dict)
-            else:
-                temp_dict["patron_id"] = record['patron_id']
-                temp_dict["late_fees"] = float(0)
-                added_list.append(temp_dict)
-                
-        temp_dict_2 = {}
-        for dict in added_list:
-            key = dict['patron_id']
-            temp_dict_2[key] = temp_dict_2.get(key, 0) + dict['late_fees']
-        updated_list = [{'patron_id': key, 'late_fees': value} for key, value in temp_dict_2.items()]
-        
-        for dict in updated_list:
-            for key, value in dict.items():
-                if key == "late_fees":
-                    if len(str(value).split('.')[-1]) != 2:
-                        dict[key] = str(value) + "0"
-
-    with open(outfile, "w", newline="") as file:
-        col = ['patron_id', 'late_fees']
-        writer = DictWriter(file, fieldnames=col)
+    """Calculates late fees per patron id and writes a summary report to
+    outfile."""
+    late_fees = defaultdict(float)
+    patrons = set()  # Keep track of all unique patrons
+    
+    with open(infile, 'r') as file:
+        reader = DictReader(file)
+        for row in reader:
+            checkout_date = datetime.strptime(row['date_checkout'], '%m/%d/%Y')
+            due_date = datetime.strptime(row['date_due'], '%m/%d/%Y')
+            returned_date = datetime.strptime(row['date_returned'], '%m/%d/%Y')  # Adjust date format
+            
+            if returned_date > due_date:
+                days_late = (returned_date - due_date).days
+                late_fees[row['patron_id']] += days_late * 0.25
+            
+            patrons.add(row['patron_id'])  # Add patron to set
+    
+    # Include patrons with no late fees
+    for patron_id in patrons:
+        if patron_id not in late_fees:
+            late_fees[patron_id] = 0.0
+    
+    with open(outfile, 'w', newline='') as file:
+        writer = DictWriter(file, fieldnames=['patron_id', 'late_fees'])
         writer.writeheader()
-        writer.writerows(updated_list)
+        for patron_id, fee in late_fees.items():
+            writer.writerow({'patron_id': patron_id, 'late_fees': f'{fee:.2f}'})
 
-if _name_ == '__main__':
+# The following main selection block will only run when you choose
+# "Run -> Module" in IDLE.  Use this section to run test code.  The
+# template code below tests the fees_report function.
+#
+# Use the get_data_file_path function to get the full path of any file
+# under the data directory.
+
+if __name__ == '__main__':
+    
     try:
         from src.util import get_data_file_path
     except ImportError:
